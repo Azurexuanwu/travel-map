@@ -618,7 +618,7 @@ function renderBubbleContent() {
   }
 
   const photo = photos[currentPhotoIndex];
-  const photoUrl = SUPABASE_URL + '/storage/v1/object/public/travel-photos/' + photo.storage_path;
+  const photoUrl = SUPABASE_URL + '/storage/v1/object/public/picture/' + photo.storage_path;
 
   const img = document.createElement('img');
   img.src = photoUrl;
@@ -754,7 +754,7 @@ async function deleteCity(cityId) {
 
   // 删除存储文件（尽力而为）
   for (const photo of (city.photos || [])) {
-    const { error: storageErr } = await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+    const { error: storageErr } = await supabase.storage.from('picture').remove([photo.storage_path]);
     if (storageErr) {
       console.error('Failed to delete storage file:', photo.storage_path, storageErr);
     }
@@ -905,7 +905,7 @@ async function saveCity() {
       const storagePath = `${cityId}/${Date.now()}_${i}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('travel-photos')
+        .from('picture')
         .upload(storagePath, p.file, {
           cacheControl: '31536000',
           upsert: false
@@ -969,7 +969,7 @@ async function saveCity() {
 async function deletePhotoFromSupabase(cityId, photo) {
   try {
     // 从 Storage 删除
-    await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+    await supabase.storage.from('picture').remove([photo.storage_path]);
     // 从 photos 表删除
     await supabase.from('photos').delete().eq('id', photo.id);
 
