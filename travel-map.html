@@ -619,7 +619,12 @@ function renderBubbleContent() {
   const photo = photos[currentPhotoIndex];
   const photoUrl = SUPABASE_URL + '/storage/v1/object/public/travel-photos/' + photo.storage_path;
 
-  photoFrame.innerHTML = `<img src="${photoUrl}" alt="${photo.description || ''}" loading="lazy">`;
+  const img = document.createElement('img');
+  img.src = photoUrl;
+  img.alt = photo.description || '';
+  img.loading = 'lazy';
+  photoFrame.innerHTML = '';
+  photoFrame.appendChild(img);
   photoDesc.textContent = photo.description || '';
   counter.textContent = `${currentPhotoIndex + 1}/${photos.length}`;
   prevBtn.disabled = currentPhotoIndex === 0;
@@ -642,16 +647,20 @@ function nextPhoto() {
   renderBubbleContent();
 }
 
-function deleteCurrentPhoto() {
+async function deleteCurrentPhoto() {
   if (!currentBubbleCity || !editMode) return;
   const photos = currentBubbleCity.photos || [];
   if (photos.length === 0) return;
+  if (currentPhotoIndex >= photos.length) currentPhotoIndex = photos.length - 1;
   const photo = photos[currentPhotoIndex];
   if (!confirm(`确定删除照片「${photo.description || '未命名'}」吗？`)) return;
 
-  deletePhotoFromSupabase(currentBubbleCity.id, photo).then(() => {
+  try {
+    await deletePhotoFromSupabase(currentBubbleCity.id, photo);
     showToast('照片已删除');
-  });
+  } catch (e) {
+    // deletePhotoFromSupabase handles its own error toast
+  }
 }
 
 // ====== 初始化 ======
