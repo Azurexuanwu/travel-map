@@ -710,6 +710,69 @@ function logoutEditMode() {
   showToast('已退出管理模式');
 }
 
+// ====== 管理抽屉 ======
+function openDrawer() {
+  renderDrawerList();
+  document.getElementById('drawer').classList.add('visible');
+  document.getElementById('drawerOverlay').classList.add('visible');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('visible');
+  document.getElementById('drawerOverlay').classList.remove('visible');
+}
+
+function renderDrawerList() {
+  const body = document.getElementById('drawerBody');
+  if (cities.length === 0) {
+    body.innerHTML = '<div class="empty-state">🏙️<br>还没有添加城市<br>点击下方按钮开始</div>';
+    return;
+  }
+
+  body.innerHTML = cities.map(city => `
+    <div class="city-item">
+      <div>
+        <div class="city-name">📍 ${escapeHtml(city.name)}</div>
+        <div class="city-meta">${(city.photos || []).length} 张照片</div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteCity('${city.id}')">删除</button>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function deleteCity(cityId) {
+  const city = cities.find(c => c.id === cityId);
+  if (!city) return;
+  if (!confirm(`确定删除「${city.name}」及其所有照片吗？此操作不可恢复。`)) return;
+
+  // 删除所有照片文件
+  for (const photo of (city.photos || [])) {
+    await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+  }
+  // 删除照片记录
+  await supabase.from('photos').delete().eq('city_id', cityId);
+  // 删除城市记录
+  const { error } = await supabase.from('cities').delete().eq('id', cityId);
+
+  if (error) {
+    showToast('删除失败: ' + error.message);
+    return;
+  }
+
+  // 从本地状态移除
+  cities = cities.filter(c => c.id !== cityId);
+  renderCityMarkers();
+  renderDrawerList();
+  closeBubble();
+  showToast(`已删除「${city.name}」`);
+}
+
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
   initMap();
