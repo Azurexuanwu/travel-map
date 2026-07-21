@@ -773,6 +773,208 @@ async function deleteCity(cityId) {
   showToast(`已删除「${city.name}」`);
 }
 
+// ====== 添加城市表单 ======
+function openAddCityForm() {
+  // 填充预设城市下拉
+  const select = document.getElementById('citySelect');
+  const existingNames = cities.map(c => c.name);
+  const available = PRESET_CITIES.filter(c => !existingNames.includes(c.name));
+  select.innerHTML = '<option value="">-- 请选择 --</option>' +
+    available.map(c => `<option value="${c.name}" data-lat="${c.lat}" data-lng="${c.lng}">${c.name}</option>`).join('');
+
+  document.getElementById('cityNameInput').value = '';
+  document.getElementById('cityLatInput').value = '';
+  document.getElementById('cityLngInput').value = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileCount').textContent = '未选择文件';
+  pendingPhotos = [];
+  renderPhotoUploadList();
+
+  document.getElementById('formOverlay').classList.add('visible');
+  document.getElementById('btnSaveCity').disabled = false;
+}
+
+function closeAddCityForm() {
+  document.getElementById('formOverlay').classList.remove('visible');
+  // 释放预览 URL
+  pendingPhotos.forEach(p => URL.revokeObjectURL(p.previewUrl));
+  pendingPhotos = [];
+}
+
+function onCitySelect() {
+  const select = document.getElementById('citySelect');
+  const option = select.selectedOptions[0];
+  if (option && option.dataset.lat) {
+    document.getElementById('cityNameInput').value = option.value;
+    document.getElementById('cityLatInput').value = option.dataset.lat;
+    document.getElementById('cityLngInput').value = option.dataset.lng;
+  }
+}
+
+function onFilesSelected() {
+  const files = Array.from(document.getElementById('fileInput').files);
+  const currentCount = pendingPhotos.length;
+
+  if (currentCount + files.length > 20) {
+    showToast('每个城市最多 20 张照片');
+    document.getElementById('fileInput').value = '';
+    return;
+  }
+
+  for (const file of files) {
+    if (file.size > 2 * 1024 * 1024) {
+      showToast(`「${file.name}」超过 2MB，已跳过`);
+      continue;
+    }
+    pendingPhotos.push({
+      file: file,
+      previewUrl: URL.createObjectURL(file),
+      description: ''
+    });
+  }
+
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileCount').textContent = `已选 ${pendingPhotos.length} 张`;
+  renderPhotoUploadList();
+}
+
+function renderPhotoUploadList() {
+  const container = document.getElementById('photoUploadList');
+  if (pendingPhotos.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = pendingPhotos.map((p, i) => `
+    <div class="photo-upload-item">
+      <img src="${p.previewUrl}" alt="预览">
+      <div class="photo-info">
+        <input type="text" placeholder="照片描述（可选）" value="${escapeHtml(p.description)}"
+               onchange="pendingPhotos[${i}].description = this.value">
+      </div>
+      <button class="remove-btn" onclick="removePendingPhoto(${i})" title="移除">×</button>
+    </div>
+  `).join('');
+}
+
+function removePendingPhoto(index) {
+  URL.revokeObjectURL(pendingPhotos[index].previewUrl);
+  pendingPhotos.splice(index, 1);
+  document.getElementById('fileCount').textContent = `已选 ${pendingPhotos.length} 张`;
+  renderPhotoUploadList();
+}
+
+async function saveCity() {
+  const name = document.getElementById('cityNameInput').value.trim();
+  const lat = parseFloat(document.getElementById('cityLatInput').value);
+  const lng = parseFloat(document.getElementById('cityLngInput').value);
+
+  if (!name) { showToast('请输入城市名称'); return; }
+  if (isNaN(lat) || isNaN(lng)) { showToast('请输入有效的经纬度'); return; }
+  if (lat < 18 || lat > 54 || lng < 73 || lng > 135) {
+    if (!confirm('经纬度似乎不在中国范围内，确定继续吗？')) return;
+  }
+
+  const btn = document.getElementById('btnSaveCity');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+
+  try {
+    // 1. 插入城市记录
+    const { data: cityData, error: cityError } = await supabase
+      .from('cities')
+      .insert({ name, lat, lng })
+      .select('id')
+      .single();
+
+    if (cityError) throw new Error('创建城市失败: ' + cityError.message);
+
+    const cityId = cityData.id;
+
+    // 2. 上传照片
+    const uploadedPhotos = [];
+    for (let i = 0; i < pendingPhotos.length; i++) {
+      const p = pendingPhotos[i];
+      const ext = p.file.name.split('.').pop() || 'jpg';
+      const storagePath = `${cityId}/${Date.now()}_${i}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('travel-photos')
+        .upload(storagePath, p.file, {
+          cacheControl: '31536000',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('上传失败:', uploadError);
+        continue;
+      }
+
+      uploadedPhotos.push({
+        city_id: cityId,
+        storage_path: storagePath,
+        description: p.description || '',
+        sort_order: i
+      });
+    }
+
+    // 3. 批量插入照片记录
+    if (uploadedPhotos.length > 0) {
+      await supabase.from('photos').insert(uploadedPhotos);
+    }
+
+    // 4. 更新本地状态
+    const newCity = {
+      id: cityId,
+      name,
+      lat,
+      lng,
+      photos: uploadedPhotos.map(p => ({
+        id: '', // 不需要精确 id，用于展示
+        storage_path: p.storage_path,
+        description: p.description,
+        sort_order: p.sort_order
+      }))
+    };
+    cities.push(newCity);
+    renderCityMarkers();
+    renderDrawerList();
+    closeAddCityForm();
+    showToast(`已添加「${name}」，共 ${uploadedPhotos.length} 张照片`);
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存';
+  }
+}
+
+async function deletePhotoFromSupabase(cityId, photo) {
+  try {
+    // 从 Storage 删除
+    await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+    // 从 photos 表删除
+    await supabase.from('photos').delete().eq('id', photo.id);
+
+    // 更新本地状态
+    const city = cities.find(c => c.id === cityId);
+    if (city) {
+      city.photos = city.photos.filter(p => p.id !== photo.id);
+      if (currentPhotoIndex >= city.photos.length) {
+        currentPhotoIndex = Math.max(0, city.photos.length - 1);
+      }
+      if (city.photos.length === 0) {
+        closeBubble();
+      } else {
+        renderBubbleContent();
+      }
+      renderDrawerList();
+      renderCityMarkers();
+    }
+  } catch (err) {
+    showToast('删除失败: ' + err.message);
+  }
+}
+
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
   initMap();
