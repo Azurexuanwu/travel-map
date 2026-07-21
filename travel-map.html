@@ -252,6 +252,7 @@ body {
     <div class="logo"><span class="icon">🏔️</span>我的旅行足迹</div>
     <div class="actions" id="headerActions">
       <button class="btn btn-outline" id="btnManage" onclick="openManagement()">⚙️ 管理</button>
+      <button class="btn btn-outline" id="btnLogout" onclick="logoutEditMode()" style="display:none; color: var(--danger);">退出</button>
     </div>
   </header>
 
@@ -655,12 +656,8 @@ async function deleteCurrentPhoto() {
   const photo = photos[currentPhotoIndex];
   if (!confirm(`确定删除照片「${photo.description || '未命名'}」吗？`)) return;
 
-  try {
-    await deletePhotoFromSupabase(currentBubbleCity.id, photo);
-    showToast('照片已删除');
-  } catch (e) {
-    // deletePhotoFromSupabase handles its own error toast
-  }
+  await deletePhotoFromSupabase(currentBubbleCity.id, photo);
+  showToast('照片已删除');
 }
 
 // ====== 认证 ======
@@ -685,10 +682,12 @@ async function verifyPassword() {
 
   if (hash === ADMIN_PASSWORD_HASH) {
     editMode = true;
+    localStorage.setItem('travel_map_edit_mode', '1');
     document.getElementById('passwordOverlay').classList.remove('visible');
     document.getElementById('btnManage').textContent = '⚙️ 管理（已登录）';
     document.getElementById('btnManage').classList.add('btn-primary');
     document.getElementById('btnManage').classList.remove('btn-outline');
+    document.getElementById('btnLogout').style.display = '';
     showToast('已进入管理模式');
     openDrawer();
   } else {
@@ -700,9 +699,11 @@ async function verifyPassword() {
 
 function logoutEditMode() {
   editMode = false;
+  localStorage.removeItem('travel_map_edit_mode');
   document.getElementById('btnManage').textContent = '⚙️ 管理';
   document.getElementById('btnManage').classList.remove('btn-primary');
   document.getElementById('btnManage').classList.add('btn-outline');
+  document.getElementById('btnLogout').style.display = 'none';
   document.getElementById('bubbleFooter').classList.remove('visible');
   closeDrawer();
   closeAddCityForm();
@@ -751,17 +752,17 @@ async function deleteCity(cityId) {
   if (!city) return;
   if (!confirm(`确定删除「${city.name}」及其所有照片吗？此操作不可恢复。`)) return;
 
-  // 删除照片记录（先删 DB 记录，再删存储文件）
-  const { error: photosDelError } = await supabase.from('photos').delete().eq('city_id', cityId);
-  if (photosDelError) {
-    console.error('Failed to delete photo records:', photosDelError);
-  }
-  // 删除存储文件（尽力而为，不影响城市删除）
+  // 删除存储文件（尽力而为）
   for (const photo of (city.photos || [])) {
     const { error: storageErr } = await supabase.storage.from('travel-photos').remove([photo.storage_path]);
     if (storageErr) {
       console.error('Failed to delete storage file:', photo.storage_path, storageErr);
     }
+  }
+  // 删除照片数据库记录
+  const { error: photosDelError } = await supabase.from('photos').delete().eq('city_id', cityId);
+  if (photosDelError) {
+    console.error('Failed to delete photo records:', photosDelError);
   }
   // 删除城市记录
   const { error } = await supabase.from('cities').delete().eq('id', cityId);
@@ -994,6 +995,14 @@ async function deletePhotoFromSupabase(cityId, photo) {
 
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
+  // 恢复登录态
+  if (localStorage.getItem('travel_map_edit_mode') === '1') {
+    editMode = true;
+    document.getElementById('btnManage').textContent = '⚙️ 管理（已登录）';
+    document.getElementById('btnManage').classList.add('btn-primary');
+    document.getElementById('btnManage').classList.remove('btn-outline');
+    document.getElementById('btnLogout').style.display = '';
+  }
   initMap();
   await loadCities();
 });
