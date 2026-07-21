@@ -751,12 +751,18 @@ async function deleteCity(cityId) {
   if (!city) return;
   if (!confirm(`确定删除「${city.name}」及其所有照片吗？此操作不可恢复。`)) return;
 
-  // 删除所有照片文件
-  for (const photo of (city.photos || [])) {
-    await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+  // 删除照片记录（先删 DB 记录，再删存储文件）
+  const { error: photosDelError } = await supabase.from('photos').delete().eq('city_id', cityId);
+  if (photosDelError) {
+    console.error('Failed to delete photo records:', photosDelError);
   }
-  // 删除照片记录
-  await supabase.from('photos').delete().eq('city_id', cityId);
+  // 删除存储文件（尽力而为，不影响城市删除）
+  for (const photo of (city.photos || [])) {
+    const { error: storageErr } = await supabase.storage.from('travel-photos').remove([photo.storage_path]);
+    if (storageErr) {
+      console.error('Failed to delete storage file:', photo.storage_path, storageErr);
+    }
+  }
   // 删除城市记录
   const { error } = await supabase.from('cities').delete().eq('id', cityId);
 
@@ -917,9 +923,16 @@ async function saveCity() {
       });
     }
 
-    // 3. 批量插入照片记录
+    // 3. 批量插入照片记录并获取真实 ID
+    let photoRecords = [];
     if (uploadedPhotos.length > 0) {
-      await supabase.from('photos').insert(uploadedPhotos);
+      const { data: inserted, error: photosError } = await supabase
+        .from('photos')
+        .insert(uploadedPhotos)
+        .select('id, storage_path, description, sort_order');
+      if (!photosError && inserted) {
+        photoRecords = inserted;
+      }
     }
 
     // 4. 更新本地状态
@@ -928,10 +941,10 @@ async function saveCity() {
       name,
       lat,
       lng,
-      photos: uploadedPhotos.map(p => ({
-        id: '', // 不需要精确 id，用于展示
+      photos: photoRecords.map(p => ({
+        id: p.id,
         storage_path: p.storage_path,
-        description: p.description,
+        description: p.description || '',
         sort_order: p.sort_order
       }))
     };
@@ -939,7 +952,11 @@ async function saveCity() {
     renderCityMarkers();
     renderDrawerList();
     closeAddCityForm();
-    showToast(`已添加「${name}」，共 ${uploadedPhotos.length} 张照片`);
+    const failedCount = pendingPhotos.length - uploadedPhotos.length;
+    const msg = failedCount > 0
+      ? `已添加「${name}」，${uploadedPhotos.length} 张成功，${failedCount} 张失败`
+      : `已添加「${name}」，共 ${uploadedPhotos.length} 张照片`;
+    showToast(msg);
   } catch (err) {
     showToast(err.message);
   } finally {
