@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>我的旅行足迹</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="china-geo.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
 <style>
 :root {
@@ -576,17 +577,8 @@ async function initMap() {
   const dom = document.getElementById('map');
   mapChart = echarts.init(dom);
 
-  // 从 DataV GeoAtlas 加载中国地图 GeoJSON
-  let geoJson;
-  try {
-    const resp = await fetch('https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json');
-    geoJson = await resp.json();
-  } catch (e) {
-    console.error('Failed to load China map GeoJSON:', e);
-    showToast('地图数据加载失败，请检查网络连接');
-    return;
-  }
-  echarts.registerMap('china', geoJson);
+  // 使用 china-geo.js 中预加载的 GeoJSON 数据
+  echarts.registerMap('china', CHINA_GEOJSON);
 
   const option = {
     tooltip: {
