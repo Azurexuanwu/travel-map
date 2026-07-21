@@ -524,7 +524,7 @@ body {
         </div>
       </div>
       <div class="form-group">
-        <label>照片（每张不超过 2MB，最多 20 张）</label>
+        <label>照片（最多 20 张）</label>
         <div class="photo-upload-list" id="photoUploadList"></div>
         <div class="file-input-wrapper">
           <label class="file-label" for="fileInput">📷 选择照片</label>
@@ -1066,10 +1066,6 @@ function onFilesSelected() {
   }
 
   for (const file of files) {
-    if (file.size > 2 * 1024 * 1024) {
-      showToast(`「${file.name}」超过 2MB，已跳过`);
-      continue;
-    }
     pendingPhotos.push({
       file: file,
       previewUrl: URL.createObjectURL(file),
