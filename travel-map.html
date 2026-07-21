@@ -663,6 +663,53 @@ async function deleteCurrentPhoto() {
   }
 }
 
+// ====== 认证 ======
+function openManagement() {
+  if (editMode) {
+    // 已登录，直接打开管理抽屉
+    openDrawer();
+    return;
+  }
+  // 未登录，弹出密码框
+  document.getElementById('passwordOverlay').classList.add('visible');
+  document.getElementById('passwordInput').value = '';
+  document.getElementById('passwordError').style.display = 'none';
+  setTimeout(() => document.getElementById('passwordInput').focus(), 100);
+}
+
+async function verifyPassword() {
+  const input = document.getElementById('passwordInput').value;
+  if (!input) return;
+
+  const hash = await sha256(input);
+
+  if (hash === ADMIN_PASSWORD_HASH) {
+    editMode = true;
+    document.getElementById('passwordOverlay').classList.remove('visible');
+    document.getElementById('btnManage').textContent = '⚙️ 管理（已登录）';
+    document.getElementById('btnManage').classList.add('btn-primary');
+    document.getElementById('btnManage').classList.remove('btn-outline');
+    showToast('已进入管理模式');
+    openDrawer();
+  } else {
+    document.getElementById('passwordError').style.display = 'block';
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordInput').focus();
+  }
+}
+
+function logoutEditMode() {
+  editMode = false;
+  document.getElementById('btnManage').textContent = '⚙️ 管理';
+  document.getElementById('btnManage').classList.remove('btn-primary');
+  document.getElementById('btnManage').classList.add('btn-outline');
+  document.getElementById('bubbleFooter').classList.remove('visible');
+  closeDrawer();
+  closeAddCityForm();
+  closeBubble();
+  showToast('已退出管理模式');
+}
+
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
   initMap();
