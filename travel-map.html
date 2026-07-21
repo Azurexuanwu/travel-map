@@ -468,14 +468,7 @@ function initMap() {
 
   mapChart.setOption(option);
 
-  // 点击地图空白处关闭气泡
-  mapChart.on('click', function(params) {
-    if (params.componentType === 'geo') {
-      closeBubble();
-    }
-  });
-
-  // 窗口大小变化时重绘
+  // 窗口大小变化时重绘，关闭气泡
   window.addEventListener('resize', function() {
     mapChart.resize();
     closeBubble();
@@ -496,9 +489,7 @@ function renderCityMarkers() {
       type: 'scatter',
       coordinateSystem: 'geo',
       data: scatterData,
-      symbolSize: function(val) {
-        return 14;
-      },
+      symbolSize: 14,
       symbol: 'pin',
       itemStyle: {
         color: '#e53e3e'
@@ -536,22 +527,26 @@ function renderCityMarkers() {
 
 // ====== 数据加载 ======
 async function loadCities() {
-  const { data, error } = await supabase
-    .from('cities')
-    .select('id, name, lat, lng, photos(id, storage_path, description, sort_order)')
-    .order('created_at', { ascending: true });
+  try {
+    const { data, error } = await supabase
+      .from('cities')
+      .select('id, name, lat, lng, photos(id, storage_path, description, sort_order)')
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    console.error('加载城市失败:', error);
-    return;
+    if (error) {
+      console.error('Failed to load cities:', error);
+      return;
+    }
+
+    cities = (data || []).map(city => ({
+      ...city,
+      photos: (city.photos || []).sort((a, b) => a.sort_order - b.sort_order)
+    }));
+
+    renderCityMarkers();
+  } catch (err) {
+    console.error('Failed to load cities:', err);
   }
-
-  cities = (data || []).map(city => ({
-    ...city,
-    photos: (city.photos || []).sort((a, b) => a.sort_order - b.sort_order)
-  }));
-
-  renderCityMarkers();
 }
 
 // ====== 初始化 ======
