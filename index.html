@@ -279,6 +279,33 @@ body {
 }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
 
+/* 城市搜索下拉 */
+.city-search-wrapper { position: relative; }
+.city-search-wrapper input {
+  width: 100%; padding: 10px 14px;
+  border: 1.5px solid #e8d5c0; border-radius: var(--radius-sm);
+  font-size: 14px; outline: none; font-family: inherit;
+  background: #fef9f0; transition: all var(--transition);
+}
+.city-search-wrapper input:focus {
+  border-color: var(--primary); background: #fff;
+  box-shadow: 0 0 0 3px rgba(232,89,12,0.1);
+}
+.city-search-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  max-height: 240px; overflow-y: auto;
+  background: #fff; border: 1px solid #e8d5c0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  box-shadow: var(--shadow); z-index: 41; display: none;
+}
+.city-search-dropdown.visible { display: block; }
+.city-search-dropdown .city-option {
+  padding: 9px 14px; cursor: pointer; font-size: 13px;
+  border-bottom: 1px solid #f5efe5; transition: background 0.15s;
+}
+.city-search-dropdown .city-option:hover,
+.city-search-dropdown .city-option.active { background: #fff5eb; color: var(--primary); }
+
 /* 照片上传区 */
 .photo-upload-list { margin-top: 8px; }
 .photo-upload-item {
@@ -475,10 +502,12 @@ body {
     <div class="form-panel">
       <h3 id="formTitle">添加城市</h3>
       <div class="form-group">
-        <label>选择城市</label>
-        <select id="citySelect" onchange="onCitySelect()">
-          <option value="">-- 请选择 --</option>
-        </select>
+        <label>搜索城市（347个地级市可选，或手动输入）</label>
+        <div class="city-search-wrapper">
+          <input type="text" id="citySearchInput" placeholder="输入城市名搜索，如：丽江" autocomplete="off"
+                 oninput="onCitySearch()" onfocus="onCitySearch()" onkeydown="onCitySearchKey(event)">
+          <div class="city-search-dropdown" id="citySearchDropdown"></div>
+        </div>
       </div>
       <div class="form-group">
         <label>城市名称</label>
@@ -959,41 +988,71 @@ async function deleteCity(cityId) {
 }
 
 // ====== 添加城市表单 ======
-function openAddCityForm() {
-  // 填充预设城市下拉
-  const select = document.getElementById('citySelect');
+// ====== 城市搜索 ======
+function onCitySearch() {
+  const input = document.getElementById('citySearchInput');
+  const dropdown = document.getElementById('citySearchDropdown');
+  const query = input.value.trim().toLowerCase();
   const existingNames = cities.map(c => c.name);
   const available = PRESET_CITIES.filter(c => !existingNames.includes(c.name));
-  select.innerHTML = '<option value="">-- 请选择 --</option>' +
-    available.map(c => `<option value="${c.name}" data-lat="${c.lat}" data-lng="${c.lng}">${c.name}</option>`).join('');
 
+  let matches;
+  if (query === '') {
+    matches = available.slice(0, 50); // show first 50 by default
+  } else {
+    matches = available.filter(c => c.name.toLowerCase().includes(query)).slice(0, 30);
+  }
+
+  if (matches.length === 0) {
+    dropdown.innerHTML = '<div class="no-result">未找到匹配城市，请直接输入城市名和经纬度</div>';
+  } else {
+    dropdown.innerHTML = matches.map(c =>
+      `<div class="city-option" onclick="selectCity('${c.name}',${c.lat},${c.lng})">${c.name}</div>`
+    ).join('');
+  }
+  dropdown.classList.add('visible');
+}
+
+function onCitySearchKey(e) {
+  const dropdown = document.getElementById('citySearchDropdown');
+  if (e.key === 'Escape') { dropdown.classList.remove('visible'); return; }
+  if (e.key === 'Enter') {
+    const first = dropdown.querySelector('.city-option');
+    if (first) first.click();
+    dropdown.classList.remove('visible');
+  }
+}
+
+function selectCity(name, lat, lng) {
+  document.getElementById('citySearchInput').value = name;
+  document.getElementById('cityNameInput').value = name;
+  document.getElementById('cityLatInput').value = lat;
+  document.getElementById('cityLngInput').value = lng;
+  document.getElementById('citySearchDropdown').classList.remove('visible');
+}
+
+// 点击其他地方关闭搜索下拉
+document.addEventListener('click', function(e) {
+  const wrapper = document.querySelector('.city-search-wrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    document.getElementById('citySearchDropdown').classList.remove('visible');
+  }
+});
+
+function openAddCityForm() {
+  document.getElementById('citySearchInput').value = '';
   document.getElementById('cityNameInput').value = '';
   document.getElementById('cityLatInput').value = '';
   document.getElementById('cityLngInput').value = '';
   document.getElementById('fileInput').value = '';
   document.getElementById('fileCount').textContent = '未选择文件';
+  document.getElementById('citySearchDropdown').classList.remove('visible');
   pendingPhotos = [];
   renderPhotoUploadList();
 
   document.getElementById('formOverlay').classList.add('visible');
   document.getElementById('btnSaveCity').disabled = false;
-}
-
-function closeAddCityForm() {
-  document.getElementById('formOverlay').classList.remove('visible');
-  // 释放预览 URL
-  pendingPhotos.forEach(p => URL.revokeObjectURL(p.previewUrl));
-  pendingPhotos = [];
-}
-
-function onCitySelect() {
-  const select = document.getElementById('citySelect');
-  const option = select.selectedOptions[0];
-  if (option && option.dataset.lat) {
-    document.getElementById('cityNameInput').value = option.value;
-    document.getElementById('cityLatInput').value = option.dataset.lat;
-    document.getElementById('cityLngInput').value = option.dataset.lng;
-  }
+  setTimeout(() => document.getElementById('citySearchInput').focus(), 150);
 }
 
 function onFilesSelected() {
