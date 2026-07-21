@@ -549,6 +549,111 @@ async function loadCities() {
   }
 }
 
+// ====== 气泡弹窗 ======
+function showBubble(city, clickEvent) {
+  currentBubbleCity = city;
+  currentPhotoIndex = 0;
+
+  const bubble = document.getElementById('bubble');
+  const mapContainer = document.querySelector('.map-container');
+  const rect = mapContainer.getBoundingClientRect();
+
+  // 将地图点击位置转换为容器内坐标
+  let left = clickEvent.clientX - rect.left;
+  let top = clickEvent.clientY - rect.top;
+
+  // 气泡宽度约 340px，确保不超出屏幕
+  const bubbleWidth = Math.min(340, rect.width * 0.9);
+  bubble.style.setProperty('--bubble-width', bubbleWidth + 'px');
+
+  if (left + bubbleWidth / 2 > rect.width) {
+    left = rect.width - bubbleWidth - 10;
+  } else {
+    left = left - bubbleWidth / 2;
+  }
+  if (left < 10) left = 10;
+
+  // 气泡显示在点击位置上方
+  top = top - 280; // 气泡高度约 280px
+  if (top < 10) top = 10;
+
+  bubble.style.left = left + 'px';
+  bubble.style.top = top + 'px';
+
+  renderBubbleContent();
+
+  // 编辑模式下显示删除按钮
+  const footer = document.getElementById('bubbleFooter');
+  if (editMode) {
+    footer.classList.add('visible');
+  } else {
+    footer.classList.remove('visible');
+  }
+
+  bubble.classList.add('visible');
+}
+
+function renderBubbleContent() {
+  const city = currentBubbleCity;
+  if (!city) return;
+
+  document.getElementById('bubbleCityName').textContent = city.name;
+
+  const photoFrame = document.getElementById('bubblePhotoFrame');
+  const photoDesc = document.getElementById('bubblePhotoDesc');
+  const counter = document.getElementById('bubbleCounter');
+  const prevBtn = document.getElementById('bubblePrev');
+  const nextBtn = document.getElementById('bubbleNext');
+
+  const photos = city.photos || [];
+
+  if (photos.length === 0) {
+    photoFrame.innerHTML = '<span class="no-photo">🖼️</span>';
+    photoDesc.textContent = '暂无照片';
+    counter.textContent = '0/0';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  const photo = photos[currentPhotoIndex];
+  const photoUrl = SUPABASE_URL + '/storage/v1/object/public/travel-photos/' + photo.storage_path;
+
+  photoFrame.innerHTML = `<img src="${photoUrl}" alt="${photo.description || ''}" loading="lazy">`;
+  photoDesc.textContent = photo.description || '';
+  counter.textContent = `${currentPhotoIndex + 1}/${photos.length}`;
+  prevBtn.disabled = currentPhotoIndex === 0;
+  nextBtn.disabled = currentPhotoIndex >= photos.length - 1;
+}
+
+function prevPhoto() {
+  if (!currentBubbleCity) return;
+  const total = (currentBubbleCity.photos || []).length;
+  if (total === 0) return;
+  currentPhotoIndex = Math.max(0, currentPhotoIndex - 1);
+  renderBubbleContent();
+}
+
+function nextPhoto() {
+  if (!currentBubbleCity) return;
+  const total = (currentBubbleCity.photos || []).length;
+  if (total === 0) return;
+  currentPhotoIndex = Math.min(total - 1, currentPhotoIndex + 1);
+  renderBubbleContent();
+}
+
+function deleteCurrentPhoto() {
+  if (!currentBubbleCity || !editMode) return;
+  const photos = currentBubbleCity.photos || [];
+  if (photos.length === 0) return;
+  const photo = photos[currentPhotoIndex];
+  if (!confirm(`确定删除照片「${photo.description || '未命名'}」吗？`)) return;
+
+  deletePhotoFromSupabase(currentBubbleCity.id, photo).then(() => {
+    showToast('照片已删除');
+  });
+}
+
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
   initMap();
