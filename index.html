@@ -32,10 +32,13 @@
 body {
   font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: linear-gradient(135deg, #fef9f0 0%, #fdf4e3 30%, #fef3e2 60%, #faf5eb 100%);
-  height: 100vh; width: 100vw;
+  height: 100vh; height: 100dvh; width: 100vw; width: 100dvw;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* 顶部栏 */
@@ -355,16 +358,46 @@ body {
 }
 
 /* 响应式 */
-@media (max-width: 600px) {
-  .header { padding: 10px 16px; }
-  .header .logo { font-size: 17px; }
-  .btn { padding: 6px 14px; font-size: 13px; }
-  .drawer { width: 100vw; border-radius: 0; }
-  .drawer-header { border-radius: 0; }
-  :root { --bubble-width: 290px; }
-  .bubble .photo-frame { height: 190px; }
-  .form-panel { padding: 20px; }
-  .password-panel { padding: 24px; }
+@media (max-width: 768px) {
+  .header { padding: 10px 14px; }
+  .header .logo { font-size: 16px; }
+  .header .logo .icon { font-size: 20px; margin-right: 4px; }
+  .btn {
+    padding: 8px 14px; font-size: 13px;
+    min-height: 40px; min-width: 60px;
+  }
+  .btn-sm { padding: 6px 12px; font-size: 12px; min-height: 34px; }
+  .drawer {
+    width: 100vw; border-radius: 0;
+  }
+  .drawer-header, .drawer-footer {
+    padding: 16px 18px;
+  }
+  .drawer-body { padding: 12px 18px; }
+  :root { --bubble-width: auto; }
+  .bubble {
+    max-width: calc(100vw - 24px);
+    left: 12px !important;
+    right: 12px;
+    top: auto !important;
+    bottom: 16px;
+    width: auto;
+  }
+  .bubble::after { display: none; }
+  .bubble .bubble-header { padding: 12px 14px; font-size: 15px; }
+  .bubble .bubble-body { padding: 12px 14px; }
+  .bubble .photo-frame { height: 200px; }
+  .bubble .photo-nav .nav-btn {
+    min-width: 36px; min-height: 36px;
+    width: 36px; height: 36px;
+  }
+  .form-panel { padding: 18px; width: 100%; max-width: 100vw; border-radius: 12px 12px 0 0; }
+  .form-overlay { align-items: flex-end; }
+  .password-panel { padding: 24px; width: calc(100vw - 32px); }
+  .toast { width: 90vw; text-align: center; font-size: 13px; padding: 10px 18px; }
+
+  /* 地图控件适配移动端 */
+  #map { touch-action: manipulation; }
 }
 
 /* Toast */
@@ -616,10 +649,14 @@ async function initMap() {
 
   mapChart.setOption(option);
 
-  // 窗口大小变化时重绘，关闭气泡
-  window.addEventListener('resize', function() {
-    mapChart.resize();
-    closeBubble();
+  // 窗口大小变化或屏幕旋转时重绘
+  ['resize', 'orientationchange'].forEach(function(evt) {
+    window.addEventListener(evt, function() {
+      setTimeout(function() {
+        mapChart && mapChart.resize();
+      }, 200);
+      closeBubble();
+    });
   });
 }
 
@@ -727,9 +764,25 @@ function showBubble(city, clickEvent) {
   const mapContainer = document.querySelector('.map-container');
   const rect = mapContainer.getBoundingClientRect();
 
-  // 将地图点击位置转换为容器内坐标
-  let left = clickEvent.clientX - rect.left;
-  let top = clickEvent.clientY - rect.top;
+  // 兼容鼠标事件和触摸事件
+  let clientX, clientY;
+  if (clickEvent && typeof clickEvent.clientX === 'number') {
+    clientX = clickEvent.clientX;
+    clientY = clickEvent.clientY;
+  } else if (clickEvent && clickEvent.touches && clickEvent.touches.length > 0) {
+    clientX = clickEvent.touches[0].clientX;
+    clientY = clickEvent.touches[0].clientY;
+  } else if (clickEvent && clickEvent.changedTouches && clickEvent.changedTouches.length > 0) {
+    clientX = clickEvent.changedTouches[0].clientX;
+    clientY = clickEvent.changedTouches[0].clientY;
+  } else {
+    // fallback: 弹到容器中央
+    clientX = rect.left + rect.width / 2;
+    clientY = rect.top + rect.height / 3;
+  }
+
+  let left = clientX - rect.left;
+  let top = clientY - rect.top;
 
   // 气泡宽度约 340px，确保不超出屏幕
   const bubbleWidth = Math.min(340, rect.width * 0.9);
@@ -1174,6 +1227,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   await initMap();
   await loadCities();
 
+  // 全局 ESC 键关闭弹窗
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeBubble();
+      closeDrawer();
+      closeAddCityForm();
+    }
+  });
 });
 </script>
 </body>
