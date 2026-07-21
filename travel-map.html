@@ -430,6 +430,135 @@ function closeBubble() {
   currentBubbleCity = null;
   currentPhotoIndex = 0;
 }
+
+// ====== ECharts 地图 ======
+let mapChart = null;
+
+function initMap() {
+  const dom = document.getElementById('map');
+  mapChart = echarts.init(dom);
+
+  const option = {
+    tooltip: {
+      trigger: 'item',
+      formatter: function(params) {
+        if (params.seriesType === 'scatter' || params.seriesType === 'effectScatter') {
+          return params.name;
+        }
+        return '';
+      }
+    },
+    geo: {
+      map: 'china',
+      roam: true,
+      zoom: 1.2,
+      center: [104.5, 36],
+      label: { show: false },
+      itemStyle: {
+        areaColor: '#f3f4f5',
+        borderColor: '#d0d5dd'
+      },
+      emphasis: {
+        label: { show: false },
+        itemStyle: { areaColor: '#e8eaed' }
+      }
+    },
+    series: []
+  };
+
+  mapChart.setOption(option);
+
+  // 点击地图空白处关闭气泡
+  mapChart.on('click', function(params) {
+    if (params.componentType === 'geo') {
+      closeBubble();
+    }
+  });
+
+  // 窗口大小变化时重绘
+  window.addEventListener('resize', function() {
+    mapChart.resize();
+    closeBubble();
+  });
+}
+
+function renderCityMarkers() {
+  if (!mapChart) return;
+
+  // 为每个城市创建散点数据
+  const scatterData = cities.map(city => ({
+    name: city.name,
+    value: [city.lng, city.lat, city.id]
+  }));
+
+  mapChart.setOption({
+    series: [{
+      type: 'scatter',
+      coordinateSystem: 'geo',
+      data: scatterData,
+      symbolSize: function(val) {
+        return 14;
+      },
+      symbol: 'pin',
+      itemStyle: {
+        color: '#e53e3e'
+      },
+      label: {
+        show: true,
+        formatter: function(p) { return p.name; },
+        position: 'right',
+        distance: 6,
+        fontSize: 13,
+        color: '#202124',
+        fontWeight: 500
+      },
+      emphasis: {
+        scale: 1.4,
+        itemStyle: { color: '#c53030' }
+      }
+    }]
+  });
+
+  // 点击城市标记 → 显示气泡
+  mapChart.off('click');
+  mapChart.on('click', function(params) {
+    if (params.componentType === 'geo') {
+      closeBubble();
+    } else if (params.seriesType === 'scatter') {
+      const cityId = params.value[2];
+      const city = cities.find(c => c.id === cityId);
+      if (city) {
+        showBubble(city, params.event.event);
+      }
+    }
+  });
+}
+
+// ====== 数据加载 ======
+async function loadCities() {
+  const { data, error } = await supabase
+    .from('cities')
+    .select('id, name, lat, lng, photos(id, storage_path, description, sort_order)')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('加载城市失败:', error);
+    return;
+  }
+
+  cities = (data || []).map(city => ({
+    ...city,
+    photos: (city.photos || []).sort((a, b) => a.sort_order - b.sort_order)
+  }));
+
+  renderCityMarkers();
+}
+
+// ====== 初始化 ======
+document.addEventListener('DOMContentLoaded', async function() {
+  initMap();
+  await loadCities();
+});
 </script>
 </body>
 </html>
